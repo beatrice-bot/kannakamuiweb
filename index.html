@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kanna DB</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="background-animation"></div>
+
+    <div class="container" id="login-container">
+        <div class="card">
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTTPKvoYF-pgJzxpQzM5xhDez8aed-w7SosxA&s" alt="Kanna Login" class="avatar">
+            <h2>Database Access</h2>
+            <p class="subtitle">Silakan masuk untuk melanjutkan</p>
+            <input type="password" id="password" placeholder="••••••••••••" autocomplete="current-password">
+            <button id="login-btn">Login</button>
+            <p id="login-message" class="message"></p>
+        </div>
+    </div>
+
+    <div class="container dashboard" id="dashboard-container" style="display:none;">
+        <header>
+            <div class="header-content">
+                <h2>Kanna Database</h2>
+                <p>Welcome, <span id="user-role">User</span>!</p>
+            </div>
+            <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRlkNhuxdsjggR_406HsbLFh2u-S6Wp99BtNivyV4rq_A6UG4hJaXRbHo8&s=10" alt="Kanna Waving" class="waving-avatar">
+        </header>
+
+        <div class="card">
+            <h3>Tambahkan Nomor Baru</h3>
+            <div class="form-group">
+                <input type="text" id="new-number" placeholder="Contoh: 6281234567890">
+                <button id="add-btn">Tambahkan</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Daftar Nomor</h3>
+            <ul id="number-list">
+                </ul>
+            <p id="list-message" class="message">Memuat data...</p>
+        </div>
+    </div>
+
+    <script>
+        const API_ENDPOINT = '/.netlify/functions/numbers';
+        let userRole = '';
+
+        // --- Elemen DOM ---
+        const loginContainer = document.getElementById('login-container');
+        const dashboardContainer = document.getElementById('dashboard-container');
+        const loginBtn = document.getElementById('login-btn');
+        const passwordInput = document.getElementById('password');
+        const loginMessage = document.getElementById('login-message');
+        const userRoleSpan = document.getElementById('user-role');
+        const addBtn = document.getElementById('add-btn');
+        const newNumberInput = document.getElementById('new-number');
+        const numberList = document.getElementById('number-list');
+        const listMessage = document.getElementById('list-message');
+
+        // --- Fungsi Backend API ---
+        async function apiCall(action, payload) {
+            try {
+                const response = await fetch(API_ENDPOINT, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, ...payload })
+                });
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Terjadi kesalahan pada server');
+                }
+                return await response.json();
+            } catch (error) {
+                console.error('API Call Error:', error);
+                throw error;
+            }
+        }
+
+        // --- Logika Login ---
+        async function handleLogin() {
+            const password = passwordInput.value;
+            if (!password) {
+                loginMessage.textContent = 'Password tidak boleh kosong.';
+                return;
+            }
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Mencoba...';
+            try {
+                const data = await apiCall('login', { password });
+                userRole = data.role;
+                showDashboard();
+            } catch (error) {
+                loginMessage.textContent = error.message;
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+            }
+        }
+
+        // --- Logika Dashboard ---
+        function showDashboard() {
+            userRoleSpan.textContent = userRole;
+            loginContainer.classList.add('fade-out');
+            setTimeout(() => {
+                loginContainer.style.display = 'none';
+                dashboardContainer.style.display = 'block';
+                dashboardContainer.classList.add('fade-in');
+                loadNumbers();
+            }, 500);
+        }
+        
+        async function loadNumbers() {
+            listMessage.textContent = 'Memuat data...';
+            numberList.innerHTML = '';
+            try {
+                const data = await apiCall('getNumbers');
+                const numbers = data.numbers || [];
+                if (numbers.length === 0) {
+                    listMessage.textContent = 'Database masih kosong.';
+                } else {
+                    listMessage.textContent = '';
+                    numbers.forEach(renderNumber);
+                }
+            } catch (error) {
+                listMessage.textContent = `Gagal memuat: ${error.message}. Pastikan GIST_TOKEN sudah benar.`;
+            }
+        }
+
+        function renderNumber(number) {
+            const li = document.createElement('li');
+            li.textContent = number;
+            if (userRole === 'Owner') {
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '×';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.onclick = () => handleDelete(number);
+                li.appendChild(deleteBtn);
+            }
+            numberList.appendChild(li);
+        }
+
+        async function handleAdd() {
+            const number = newNumberInput.value.trim();
+            if (!number) return;
+            addBtn.disabled = true;
+            try {
+                await apiCall('addNumber', { number });
+                newNumberInput.value = '';
+                loadNumbers();
+            } catch (error) {
+                alert(`Gagal menambah: ${error.message}`);
+            } finally {
+                addBtn.disabled = false;
+            }
+        }
+
+        async function handleDelete(number) {
+            if (!confirm(`Yakin ingin menghapus nomor ${number}?`)) return;
+            try {
+                await apiCall('deleteNumber', { number });
+                loadNumbers();
+            } catch (error) {
+                alert(`Gagal menghapus: ${error.message}`);
+            }
+        }
+
+        // --- Event Listeners ---
+        loginBtn.addEventListener('click', handleLogin);
+        passwordInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') handleLogin();
+        });
+        addBtn.addEventListener('click', handleAdd);
+        newNumberInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') handleAdd();
+        });
+    </script>
+</body>
+</html>
