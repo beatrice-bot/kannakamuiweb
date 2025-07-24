@@ -5,19 +5,21 @@ const GIST_ID = '3c27f74a3fcf5b6c1db2a8b9fa33dc47';
 const GIST_FILENAME = 'users.json';
 const GIST_URL = `https://api.github.com/gists/${GIST_ID}`;
 
-// --- Password (seharusnya di environment variable juga, tapi untuk simpelnya di sini) ---
+// --- Password ---
 const OWNER_PASS = 'KannaKamuiNovita';
 const RESELLER_PASS = 'KannaKamuiBot';
 
 
-// --- Fungsi Pembantu untuk Gist ---
+// --- Fungsi Pembantu untuk Gist (Sudah Dimodifikasi) ---
 async function getGistData(token) {
     const response = await fetch(GIST_URL, {
         headers: { 'Authorization': `token ${token}` }
     });
-    if (!response.ok) throw new Error('Gagal mengambil data dari Gist. Cek GIST_ID.');
+    if (!response.ok) throw new Error('Gagal mengambil data dari Gist.');
     const gist = await response.json();
-    return JSON.parse(gist.files[GIST_FILENAME]?.content || '{ "numbers": [] }');
+    const content = gist.files[GIST_FILENAME]?.content;
+    // Jika Gist kosong, kembalikan array kosong. Jika tidak, parse sebagai array.
+    return content ? JSON.parse(content) : [];
 }
 
 async function updateGistData(token, data) {
@@ -30,9 +32,9 @@ async function updateGistData(token, data) {
     });
 }
 
-// --- Handler Utama ---
+
+// --- Handler Utama (Sudah Dimodifikasi) ---
 exports.handler = async function(event) {
-    // Hanya izinkan metode POST
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: JSON.stringify({ message: 'Method Not Allowed' }) };
     }
@@ -53,25 +55,26 @@ exports.handler = async function(event) {
                 throw new Error('Password salah!');
             }
             case 'getNumbers': {
-                const data = await getGistData(GITHUB_TOKEN);
-                return { statusCode: 200, body: JSON.stringify(data) };
+                // Sekarang mengirim data dalam format {"numbers": [...]} agar frontend tidak perlu diubah
+                const numbers = await getGistData(GITHUB_TOKEN);
+                return { statusCode: 200, body: JSON.stringify({ numbers: numbers }) };
             }
             case 'addNumber': {
                 const { number } = payload;
                 if (!number) throw new Error('Nomor tidak boleh kosong.');
-                const data = await getGistData(GITHUB_TOKEN);
-                if (!data.numbers.includes(number)) {
-                    data.numbers.push(number);
-                    data.numbers.sort(); // Urutkan nomor
-                    await updateGistData(GITHUB_TOKEN, data);
+                let numbers = await getGistData(GITHUB_TOKEN); // 'data' sekarang adalah array
+                if (!numbers.includes(number)) {
+                    numbers.push(number);
+                    numbers.sort();
+                    await updateGistData(GITHUB_TOKEN, numbers); // Simpan array langsung
                 }
                 return { statusCode: 200, body: JSON.stringify({ message: 'Berhasil ditambah' }) };
             }
             case 'deleteNumber': {
                 const { number } = payload;
-                const data = await getGistData(GITHUB_TOKEN);
-                data.numbers = data.numbers.filter(n => n !== number);
-                await updateGistData(GITHUB_TOKEN, data);
+                let numbers = await getGistData(GITHUB_TOKEN); // 'data' sekarang adalah array
+                numbers = numbers.filter(n => n !== number); // Filter array langsung
+                await updateGistData(GITHUB_TOKEN, numbers); // Simpan array langsung
                 return { statusCode: 200, body: JSON.stringify({ message: 'Berhasil dihapus' }) };
             }
             default:
